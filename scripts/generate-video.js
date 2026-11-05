@@ -45,8 +45,6 @@ function getDeterministicPillar() {
 }
 
 async function generateStructuredScript(pillar) {
-  console.log(`🤖 Requesting ${pillar.category} script from Gemini 3.8 Flash...`);
-
   const scriptSchema = {
     type: Type.OBJECT,
     properties: {
@@ -89,28 +87,36 @@ async function generateStructuredScript(pillar) {
     Avoid markdown symbols like asterisks or backticks inside strings.
   `;
 
-  for (let attempt = 1; attempt <= 3; attempt++) {
-    try {
-      const response = await ai.models.generateContent({
-        model: 'gemini-3.8-flash',
-        contents: prompt,
-        config: {
-          responseMimeType: 'application/json',
-          responseSchema: scriptSchema,
-          temperature: 0.75
-        }
-      });
+  // Try primary model, then fallback model if 503 occurs
+  const models = ['gemini-3.8-flash', 'gemini-2.0-flash'];
 
-      const parsed = JSON.parse(response.text.trim());
-      if (!parsed.scenes || parsed.scenes.length === 0) {
-        throw new Error('Empty scenes array returned');
+  for (const modelName of models) {
+    for (let attempt = 1; attempt <= 2; attempt++) {
+      try {
+        console.log(`🤖 Requesting ${pillar.category} script from ${modelName} (Attempt ${attempt})...`);
+        const response = await ai.models.generateContent({
+          model: modelName,
+          contents: prompt,
+          config: {
+            responseMimeType: 'application/json',
+            responseSchema: scriptSchema,
+            temperature: 0.75
+          }
+        });
+
+        const parsed = JSON.parse(response.text.trim());
+        if (parsed.scenes && parsed.scenes.length > 0) {
+          return parsed;
+        }
+      } catch (err) {
+        console.warn(`⚠️ ${modelName} attempt ${attempt} failed: ${err.message}`);
+        // Wait 4 seconds before retrying to let server load clear
+        await new Promise((resolve) => setTimeout(resolve, 4000));
       }
-      return parsed;
-    } catch (err) {
-      console.warn(`⚠️ Gemini attempt ${attempt} failed: ${err.message}`);
-      if (attempt === 3) throw err;
     }
   }
+
+  throw new Error('All Gemini model endpoints experienced high demand (503). Pipeline aborted.');
 }
 
 function synthesizeSceneAudio(scenes, voice, publicDir) {
