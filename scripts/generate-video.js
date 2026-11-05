@@ -45,7 +45,7 @@ function getDeterministicPillar() {
 }
 
 async function generateStructuredScript(pillar) {
-  console.log(` Requesting ${pillar.category} script from Gemini 2.5 Flash...`);
+  console.log(`🤖 Requesting ${pillar.category} script from Gemini 3.8 Flash...`);
 
   const scriptSchema = {
     type: Type.OBJECT,
@@ -92,7 +92,7 @@ async function generateStructuredScript(pillar) {
   for (let attempt = 1; attempt <= 3; attempt++) {
     try {
       const response = await ai.models.generateContent({
-        model: 'gemini-2.5-flash',
+        model: 'gemini-3.8-flash',
         contents: prompt,
         config: {
           responseMimeType: 'application/json',
@@ -107,14 +107,14 @@ async function generateStructuredScript(pillar) {
       }
       return parsed;
     } catch (err) {
-      console.warn(` Gemini attempt ${attempt} failed: ${err.message}`);
+      console.warn(`⚠️ Gemini attempt ${attempt} failed: ${err.message}`);
       if (attempt === 3) throw err;
     }
   }
 }
 
 function synthesizeSceneAudio(scenes, voice, publicDir) {
-  console.log(` Synthesizing neural voiceover (${voice}) and probing exact durations...`);
+  console.log(`🎙️ Synthesizing neural voiceover (${voice}) and probing exact durations...`);
   const enrichedScenes = [];
 
   for (const scene of scenes) {
@@ -158,7 +158,7 @@ function escapeHtml(str) {
 
 async function runPipeline() {
   if (!process.env.GEMINI_API_KEY) {
-    console.error(' Missing GEMINI_API_KEY environment variable.');
+    console.error('❌ Missing GEMINI_API_KEY environment variable.');
     process.exit(1);
   }
 
@@ -188,13 +188,13 @@ async function runPipeline() {
   const isEvenDay = dayOfMonth % 2 === 0;
   const outputVideoPath = path.resolve('out/output.mp4');
 
-  console.log(` Date check: Day ${dayOfMonth} (${isEvenDay ? 'EVEN -> Remotion' : 'ODD -> Papercut Schema'})`);
+  console.log(`📅 Date check: Day ${dayOfMonth} (${isEvenDay ? 'EVEN -> Remotion' : 'ODD -> Papercut Schema'})`);
 
   if (isEvenDay) {
     const propsPath = path.resolve('out/remotion-props.json');
     fs.writeFileSync(propsPath, JSON.stringify(payload, null, 2));
 
-    console.log(' Executing Remotion headless composition render...');
+    console.log('🎬 Executing Remotion headless composition render...');
     execFileSync('npx', [
       'remotion',
       'render',
@@ -204,7 +204,7 @@ async function runPipeline() {
       `--props=${propsPath}`
     ], { stdio: 'inherit' });
   } else {
-    console.log(' Compiling dynamic timeline array to papercut.json schema...');
+    console.log('📐 Compiling dynamic timeline array to papercut.json schema...');
     let cursor = 0;
     const timeline = enrichedScenes.map((scene) => {
       const start = Number(cursor.toFixed(2));
@@ -253,25 +253,25 @@ async function runPipeline() {
     try {
       execSync('npx --no-install papercut-cli render --config papercut.json', { stdio: 'inherit' });
     } catch {
-      console.log(' Transforming papercut.json via built-in FFmpeg schema renderer...');
+      console.log('⚡ Transforming papercut.json via built-in FFmpeg schema renderer...');
       execFileSync('node', ['scripts/papercut-renderer.js'], { stdio: 'inherit' });
     }
   }
 
   if (!fs.existsSync(outputVideoPath) || fs.statSync(outputVideoPath).size < 10000) {
-    console.error(' Render failed or produced an empty MP4 file.');
+    console.error('❌ Render failed or produced an empty MP4 file.');
     process.exit(1);
   }
 
   const { TELEGRAM_BOT_TOKEN, TELEGRAM_CHAT_ID } = process.env;
   if (!TELEGRAM_BOT_TOKEN || !TELEGRAM_CHAT_ID) {
-    console.log('? Telegram credentials not set in environment; skipping upload.');
+    console.log('ℹ️ Telegram credentials not set in environment; skipping upload.');
     return;
   }
 
-  console.log(' Streaming out/output.mp4 to Telegram...');
+  console.log('📤 Streaming out/output.mp4 to Telegram...');
   const engineLabel = isEvenDay ? 'Remotion 4.0' : 'Papercut Timeline';
-  const htmlCaption = `<b>[${escapeHtml(payload.category.toUpperCase())}] ${escapeHtml(payload.title)}</b>\n\n Engine: <code>${engineLabel}</code>\n Duration: <code>${totalDuration}s</code>`;
+  const htmlCaption = `<b>[${escapeHtml(payload.category.toUpperCase())}] ${escapeHtml(payload.title)}</b>\n\n⚙️ Engine: <code>${engineLabel}</code>\n⏱ Duration: <code>${totalDuration}s</code>`;
 
   execFileSync('curl', [
     '--fail',
@@ -286,10 +286,10 @@ async function runPipeline() {
     '-F', 'supports_streaming=true'
   ], { stdio: 'inherit' });
 
-  console.log(' Pipeline completed and delivered to Telegram.');
+  console.log('✅ Pipeline completed and delivered to Telegram.');
 }
 
 runPipeline().catch((err) => {
-  console.error(' Fatal Pipeline Error:', err);
+  console.error('💥 Fatal Pipeline Error:', err);
   process.exit(1);
 });
