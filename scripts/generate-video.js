@@ -87,22 +87,29 @@ async function generateStructuredScript(pillar) {
     Avoid markdown symbols like asterisks or backticks inside strings.
   `;
 
-  // Try primary model, then fallback model if 503 occurs
   const models = ['gemini-3.8-flash', 'gemini-2.0-flash'];
 
   for (const modelName of models) {
     for (let attempt = 1; attempt <= 2; attempt++) {
       try {
         console.log(`🤖 Requesting ${pillar.category} script from ${modelName} (Attempt ${attempt})...`);
+        
+        // Wrap request with a 15-second AbortController timeout to prevent hanging
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), 15000);
+
         const response = await ai.models.generateContent({
           model: modelName,
           contents: prompt,
           config: {
             responseMimeType: 'application/json',
             responseSchema: scriptSchema,
-            temperature: 0.75
+            temperature: 0.75,
+            signal: controller.signal
           }
         });
+
+        clearTimeout(timeoutId);
 
         const parsed = JSON.parse(response.text.trim());
         if (parsed.scenes && parsed.scenes.length > 0) {
@@ -110,13 +117,12 @@ async function generateStructuredScript(pillar) {
         }
       } catch (err) {
         console.warn(`⚠️ ${modelName} attempt ${attempt} failed: ${err.message}`);
-        // Wait 4 seconds before retrying to let server load clear
-        await new Promise((resolve) => setTimeout(resolve, 4000));
+        await new Promise((resolve) => setTimeout(resolve, 3000));
       }
     }
   }
 
-  throw new Error('All Gemini model endpoints experienced high demand (503). Pipeline aborted.');
+  throw new Error('All Gemini model endpoints failed or timed out. Pipeline aborted.');
 }
 
 function synthesizeSceneAudio(scenes, voice, publicDir) {
@@ -231,7 +237,7 @@ async function runPipeline() {
           {
             type: 'kinetic_text',
             headline: scene.headline,
-            subtext: scene.subtext,
+            subtext: payload.title,
             caption: scene.narration
           },
           {
