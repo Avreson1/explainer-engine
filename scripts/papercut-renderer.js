@@ -45,14 +45,29 @@ function renderPapercutTimeline() {
     segmentFiles.push(segPath);
 
     const filterGraph = [
-      `drawbox=x=64:y=120:w=952:h=1680:color=white@0.12:t=2`,
-      `drawbox=x=64:y=860:w='min(952,952*(t/0.6))':h=6:color=${accentHex}:t=fill`,
-      `drawtext=text='${categoryLabel} // 0${idx + 1}':fontcolor=${accentHex}:fontsize=34:x=110:y=220`,
-      `drawtext=text='${headline}':fontcolor=white:fontsize=76:x=110:y='720-min(40,40*(t/0.35))'`,
-      `drawtext=text='${subtext}':fontcolor=${accentHex}:fontsize=44:x=110:y=910`,
-      `drawtext=text='${line1}':fontcolor=white@0.9:fontsize=38:x=110:y=1420`,
-      `drawtext=text='${line2}':fontcolor=white@0.9:fontsize=38:x=110:y=1480`,
-      `drawbox=x=64:y=1790:w='952*(t/${clip.duration})':h=10:color=${accentHex}:t=fill`
+      // Outer Swiss Structural Frame
+      `drawbox=x=64:y=100:w=952:h=1720:color=white@0.12:t=2`,
+      // Animated Vertical & Horizontal Telemetry Scanlines inside Center Stage
+      `drawbox=x=110:y=620:w=860:h=520:color=white@0.06:t=2`,
+      `drawbox=x='110+430+380*sin(2*PI*t/2.5)':y=620:w=4:h=520:color=${accentHex}@0.75:t=fill`,
+      `drawbox=x=110:y='620+260+220*cos(2*PI*t/2.0)':w=860:h=4:color=${accentHex}@0.75:t=fill`,
+      // Orbiting / Oscillating Geometric Target Node
+      `drawbox=x='520+260*cos(3*t)':y='860+160*sin(3*t)':w=36:h=36:color=${accentHex}:t=fill`,
+      `drawbox=x='520-260*cos(2.2*t)':y='860-140*sin(2.2*t)':w=24:h=24:color=white:t=fill`,
+      // Expanding Accent Rule
+      `drawbox=x=110:y=540:w='min(860,860*(t/0.45))':h=6:color=${accentHex}:t=fill`,
+      // Category & Sequence Header
+      `drawtext=text='${categoryLabel} // SEQ 0${idx + 1}':fontcolor=${accentHex}:fontsize=34:x=110:y=160`,
+      // Subtext Formula Tag
+      `drawtext=text='${subtext}':fontcolor=${accentHex}:fontsize=42:x=110:y=260`,
+      // Kinetic Headline with smooth upward slide
+      `drawtext=text='${headline}':fontcolor=white:fontsize=68:x=110:y='380-min(40,40*(t/0.3))'`,
+      // Lower-third Spoken Narration Box
+      `drawbox=x=96:y=1340:w=888:h=220:color=black@0.55:t=fill`,
+      `drawtext=text='${line1}':fontcolor=white:fontsize=38:x=124:y=1395`,
+      `drawtext=text='${line2}':fontcolor=${accentHex}:fontsize=38:x=124:y=1465`,
+      // Bottom Timeline Progress Bar
+      `drawbox=x=64:y=1810:w='952*(t/${clip.duration})':h=10:color=${accentHex}:t=fill`
     ].join(',');
 
     execFileSync('ffmpeg', [
@@ -85,7 +100,7 @@ function renderPapercutTimeline() {
     finalOut
   ], { stdio: 'inherit' });
 
-  console.log(` Papercut schema compiled to ${finalOut}`);
+  console.log(`✅ Papercut animated schema compiled to ${finalOut}`);
 }
 
 renderPapercutTimeline();
