@@ -3,7 +3,11 @@ import { execSync, execFileSync } from 'child_process';
 import fs from 'fs';
 import path from 'path';
 
-const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
+const GEMINI_API_KEY = (process.env.GEMINI_API_KEY || '').trim();
+const TELEGRAM_BOT_TOKEN = (process.env.TELEGRAM_BOT_TOKEN || '').trim();
+const TELEGRAM_CHAT_ID = (process.env.TELEGRAM_CHAT_ID || '').trim();
+
+const ai = new GoogleGenAI({ apiKey: GEMINI_API_KEY });
 
 const PILLARS = [
   {
@@ -44,7 +48,6 @@ function getDeterministicPillar() {
   return PILLARS[index];
 }
 
-// Fallback emergency script generator if remote APIs experience prolonged 503 outages
 function getFallbackScript(pillar) {
   return {
     title: `${pillar.category}: The Hidden Paradox`,
@@ -127,16 +130,16 @@ async function generateStructuredScript(pillar) {
     Avoid markdown symbols like asterisks or backticks inside strings.
   `;
 
-  // Audited active models list (omitting defunct 2.0 endpoints)
-  const models = ['gemini-3.8-flash', 'gemini-3.6-flash', 'gemini-3.5-flash-lite'];
+  // Put gemini-3.6-flash first since it succeeded immediately in your last run
+  const models = ['gemini-3.6-flash', 'gemini-3.8-flash', 'gemini-3.5-flash-lite'];
 
   for (const modelName of models) {
     for (let attempt = 1; attempt <= 2; attempt++) {
       try {
         console.log(`🤖 Requesting ${pillar.category} script from ${modelName} (Attempt ${attempt})...`);
-        
+
         const controller = new AbortController();
-        const timeoutId = setTimeout(() => controller.abort(), 12000);
+        const timeoutId = setTimeout(() => controller.abort(), 15000);
 
         const response = await ai.models.generateContent({
           model: modelName,
@@ -145,7 +148,7 @@ async function generateStructuredScript(pillar) {
             responseMimeType: 'application/json',
             responseSchema: scriptSchema,
             temperature: 0.75,
-            signal: controller.signal
+            abortSignal: controller.signal
           }
         });
 
@@ -158,13 +161,12 @@ async function generateStructuredScript(pillar) {
         }
       } catch (err) {
         console.warn(`⚠️ ${modelName} attempt ${attempt} failed: ${err.message}`);
-        // Exponential backoff sleep before retrying
         await new Promise((resolve) => setTimeout(resolve, attempt * 3000));
       }
     }
   }
 
-  console.warn('⚠️ All Gemini model endpoints experienced temporary high demand or limits. Engaging built-in offline fallback script generator to guarantee pipeline execution.');
+  console.warn('⚠️ All Gemini endpoints busy. Using built-in fallback script.');
   return getFallbackScript(pillar);
 }
 
@@ -211,8 +213,52 @@ function escapeHtml(str) {
     .replace(/"/g, '&quot;');
 }
 
+async function sendVideoToTelegram(videoPath, htmlCaption) {
+  const endpoint = `https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendVideo`;
+
+  // Primary method: cURL using --form-string for text fields so ';', '"', and '@' never trigger exit code 26
+  try {
+    execFileSync('/usr/bin/curl', [
+      '--fail',
+      '--silent',
+      '--show-error',
+      '-X', 'POST',
+      endpoint,
+      '--form-string', `chat_id=${TELEGRAM_CHAT_ID}`,
+      '-F', `video=@${videoPath};type=video/mp4`,
+      '--form-string', `caption=${htmlCaption}`,
+      '--form-string', 'parse_mode=HTML',
+      '--form-string', 'supports_streaming=true'
+    ], { stdio: 'inherit' });
+    return;
+  } catch (curlErr) {
+    console.warn(`⚠️ cURL upload encountered an issue (${curlErr.message}). Falling back to native Node fetch...`);
+  }
+
+  // Fallback method: Native Node 20 multipart FormData upload (zero external binary dependencies)
+  const fileBuffer = fs.readFileSync(videoPath);
+  const videoBlob = new Blob([fileBuffer], { type: 'video/mp4' });
+
+  const formData = new FormData();
+  formData.append('chat_id', TELEGRAM_CHAT_ID);
+  formData.append('video', videoBlob, 'output.mp4');
+  formData.append('caption', htmlCaption);
+  formData.append('parse_mode', 'HTML');
+  formData.append('supports_streaming', 'true');
+
+  const res = await fetch(endpoint, {
+    method: 'POST',
+    body: formData
+  });
+
+  if (!res.ok) {
+    const errText = await res.text();
+    throw new Error(`Telegram API HTTP ${res.status}: ${errText}`);
+  }
+}
+
 async function runPipeline() {
-  if (!process.env.GEMINI_API_KEY) {
+  if (!GEMINI_API_KEY) {
     console.error('❌ Missing GEMINI_API_KEY environment variable.');
     process.exit(1);
   }
@@ -280,7 +326,7 @@ async function runPipeline() {
           {
             type: 'kinetic_text',
             headline: scene.headline,
-            subtext: payload.title,
+            subtext: scene.subtext,
             caption: scene.narration
           },
           {
@@ -318,7 +364,6 @@ async function runPipeline() {
     process.exit(1);
   }
 
-  const { TELEGRAM_BOT_TOKEN, TELEGRAM_CHAT_ID } = process.env;
   if (!TELEGRAM_BOT_TOKEN || !TELEGRAM_CHAT_ID) {
     console.log('ℹ️ Telegram credentials not set in environment; skipping upload.');
     return;
@@ -328,18 +373,7 @@ async function runPipeline() {
   const engineLabel = isEvenDay ? 'Remotion 4.0' : 'Papercut Timeline';
   const htmlCaption = `<b>[${escapeHtml(payload.category.toUpperCase())}] ${escapeHtml(payload.title)}</b>\n\n⚙️ Engine: <code>${engineLabel}</code>\n⏱ Duration: <code>${totalDuration}s</code>`;
 
-  execFileSync('curl', [
-    '--fail',
-    '--silent',
-    '--show-error',
-    '-X', 'POST',
-    `https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendVideo`,
-    '-F', `chat_id=${TELEGRAM_CHAT_ID}`,
-    '-F', `video=@${outputVideoPath}`,
-    '-F', `caption=${htmlCaption}`,
-    '-F', 'parse_mode=HTML',
-    '-F', 'supports_streaming=true'
-  ], { stdio: 'inherit' });
+  await sendVideoToTelegram(outputVideoPath, htmlCaption);
 
   console.log('✅ Pipeline completed and delivered to Telegram.');
 }
